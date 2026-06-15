@@ -1,0 +1,17 @@
+[package]
+name = "white-gold"
+version = "0.1.0"
+edition = "2021"
+description = "A generative chronicle of the historic salt roads"
+authors = ["JJJHolscher"]
+
+# Deliberately zero dependencies: the whole game is std-only so it builds and
+# runs anywhere `cargo` does, with no system or GPU libraries required.
+[dependencies]
+
+[[bin]]
+name = "white-gold"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
