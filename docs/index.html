@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Party Captions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one full-screen caption stage, a thin status strip on top, a thumb bar at the bottom. */
+:root{
+  --bg:#000000; --fg:#ffffff; --dim:#8b909a; --strip:#101216;
+  --btn:#ffd400; --btn-fg:#000000; --btn2:#262a31; --btn2-fg:#ffffff;
+  --live:#3ddc84; --err:#ff6b5a;
+  --caption:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --ui:system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"]{
+  --bg:#ffffff; --fg:#000000; --dim:#5f646d; --strip:#eef0f3;
+  --btn:#000000; --btn-fg:#ffffff; --btn2:#dde0e5; --btn2-fg:#000000;
+  --live:#0a7d3b; --err:#c0261a; color-scheme: light;
+}
+:root[data-theme="yellow"]{
+  --bg:#ffd400; --fg:#000000; --dim:#5c4d00; --strip:#e6bf00;
+  --btn:#000000; --btn-fg:#ffd400; --btn2:#c9a700; --btn2-fg:#000000;
+  --live:#0a5c2c; --err:#8a1208; color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--ui);
+  display:flex; flex-direction:column; overflow:hidden;
+  padding-top:env(safe-area-inset-top,0px);
+  -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none;
+}
+.strip{
+  display:flex; align-items:center; gap:10px;
+  padding:6px 16px; background:var(--strip); font-size:15px; min-height:44px;
+}
+.status{display:flex; align-items:center; gap:8px; flex:1; min-width:0}
+.dot{width:12px; height:12px; border-radius:50%; background:var(--dim); flex:none}
+.dot.on{background:var(--live); animation:pulse 1.4s ease-in-out infinite}
+.dot.bad{background:var(--err)}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.dot.on{animation:none}}
+#statusText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#statusText.bad{color:var(--err); white-space:normal}
+.strip select,.strip button{
+  font:inherit; font-size:14px; color:var(--btn2-fg); background:var(--btn2);
+  border:0; border-radius:8px; padding:6px 10px; height:32px;
+}
+.stage{
+  flex:1; min-height:0; position:relative; overflow:hidden;
+  margin:12px 16px; display:flex; align-items:center;
+}
+#text{
+  width:100%; font-family:var(--caption); font-weight:700; line-height:1.12;
+  overflow-wrap:normal; word-break:normal; hyphens:none; white-space:normal;
+  letter-spacing:.005em;
+}
+#text.breakall{overflow-wrap:anywhere}
+#text .interim{opacity:.72}
+#text .more{color:var(--dim)}
+#text.placeholder{color:var(--dim)}
+.bar{
+  display:flex; gap:10px; padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px));
+  background:var(--strip);
+}
+.bar button{
+  font-family:var(--ui); font-weight:700; border:0; border-radius:16px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+}
+#clearBtn{flex:1; height:76px; font-size:24px; background:var(--btn); color:var(--btn-fg)}
+#pauseBtn{width:92px; height:76px; font-size:16px; background:var(--btn2); color:var(--btn2-fg); flex-direction:column; gap:4px}
+.bar button:active{transform:scale(.97)}
+/* Flip: portrait shows upside down, so the mic end can point up at the speaker. */
+@media (orientation: portrait){ :root[data-flip="on"] body{ transform:rotate(180deg) } }
+/* Immersive: only captions while listening. Tap anywhere to pause. */
+body.immersive .strip, body.immersive .bar{ display:none }
+body.immersive .stage{ margin:16px }
+button:focus-visible,select:focus-visible{outline:3px solid var(--live); outline-offset:2px}
+.bar svg{width:28px;height:28px;flex:none}
+#pauseBtn svg{width:24px;height:24px}
+</style>
+</head>
+<body>
+  <div class="strip">
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">Ready</span></div>
+    <select id="lang" aria-label="Speech language">
+      <option value="nl-NL">Nederlands</option>
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="de-DE">Deutsch</option>
+      <option value="fr-FR">Français</option>
+      <option value="es-ES">Español</option>
+      <option value="it-IT">Italiano</option>
+      <option value="pt-PT">Português</option>
+    </select>
+    <button id="flipBtn" type="button" aria-label="Flip portrait">Flip</button>
+    <button id="themeBtn" type="button" aria-label="Change colors">Colors</button>
+  </div>
+
+  <main class="stage" id="stage">
+    <div id="text" class="placeholder" aria-live="polite">Tap the button below and talk</div>
+  </main>
+
+  <div class="bar">
+    <button id="clearBtn" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+      <span id="clearLabel">Start talking</span>
+    </button>
+    <button id="pauseBtn" type="button" aria-label="Pause">
+      <svg id="pauseIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      <span id="pauseLabel">Pause</span>
+    </button>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var isAndroid = /Android/i.test(navigator.userAgent);
+  var LH = 1.12;
+
+  var stage = document.getElementById("stage");
+  var textEl = document.getElementById("text");
+  var dot = document.getElementById("dot");
+  var statusText = document.getElementById("statusText");
+  var clearBtn = document.getElementById("clearBtn");
+  var clearLabel = document.getElementById("clearLabel");
+  var pauseBtn = document.getElementById("pauseBtn");
+  var pauseLabel = document.getElementById("pauseLabel");
+  var pauseIcon = document.getElementById("pauseIcon");
+  var langSel = document.getElementById("lang");
+  var themeBtn = document.getElementById("themeBtn");
+  var flipBtn = document.getElementById("flipBtn");
+
+  var rec = null, wantListening = false, generation = 0, restartTimer = null;
+  var committed = "", sessionFinal = "", sessionInterim = "";
+  var wakeLock = null, hasStarted = false;
+
+  // ---------- storage (optional) ----------
+  function load(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function save(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+
+  // ---------- language ----------
+  var savedLang = load("pc-lang2");
+  var navLang = "nl-NL";
+  function pickLang(want){
+    var opts = Array.prototype.map.call(langSel.options, function(o){ return o.value; });
+    if (want && opts.indexOf(want) >= 0) return want;
+    var base = (want || "").slice(0,2).toLowerCase();
+    for (var i=0;i<opts.length;i++) if (opts[i].slice(0,2).toLowerCase() === base) return opts[i];
+    return "en-US";
+  }
+  langSel.value = pickLang(savedLang || navLang);
+  langSel.addEventListener("change", function(){
+    save("pc-lang2", langSel.value);
+    if (wantListening) restartNow();
+  });
+
+  // ---------- theme ----------
+  var themes = ["dark","light","yellow"];
+  var theme = load("pc-theme");
+  if (themes.indexOf(theme) < 0) theme = "dark";
+  function applyTheme(){
+    if (theme === "dark") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", theme);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", getComputedStyle(document.documentElement).getPropertyValue("--strip").trim() || "#000");
+  }
+  applyTheme();
+  themeBtn.addEventListener("click", function(){
+    theme = themes[(themes.indexOf(theme)+1) % themes.length];
+    save("pc-theme", theme); applyTheme();
+  });
+
+  // ---------- flip ----------
+  var flip = load("pc-flip") !== "off";
+  function applyFlip(){
+    document.documentElement.setAttribute("data-flip", flip ? "on" : "off");
+    flipBtn.textContent = flip ? "Flip: on" : "Flip: off";
+  }
+  applyFlip();
+  flipBtn.addEventListener("click", function(){
+    flip = !flip; save("pc-flip", flip ? "on" : "off"); applyFlip();
+  });
+
+  // ---------- status ----------
+  function setStatus(msg, kind){
+    statusText.textContent = msg;
+    statusText.className = kind === "bad" ? "bad" : "";
+    dot.className = "dot" + (kind === "on" ? " on" : kind === "bad" ? " bad" : "");
+  }
+
+  // ---------- text helpers ----------
+  function clean(s){ return (s || "").replace(/\s+/g," ").trim(); }
+  function join(a,b){ a = clean(a); b = clean(b); return a && b ? a + " " + b : (a || b); }
+  function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function esc(s){ return s.replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+  // ---------- fitting ----------
+  function bounds(){
+    var h = stage.clientHeight, w = stage.clientWidth;
+    var max = Math.max(24, h / (3 * LH));           // never bigger than 3 lines fill the area
+    var min = Math.max(28, Math.min(w, h) / 11);   // smallest size before old text drops off
+    if (min > max) min = max;
+    return {w:w, h:h, min:min, max:max};
+  }
+  function fitsAt(size, b){
+    textEl.style.fontSize = size + "px";
+    return textEl.scrollHeight <= b.h + 1 && textEl.scrollWidth <= b.w + 1;
+  }
+  function bestSize(b){
+    if (!fitsAt(b.min, b)) return 0;
+    var lo = b.min, hi = b.max;
+    if (fitsAt(hi, b)) return hi;
+    for (var i=0;i<14;i++){ var mid=(lo+hi)/2; if (fitsAt(mid,b)) lo=mid; else hi=mid; }
+    return lo;
+  }
+
+  var tokens = [];   // [{w:"word", interim:bool}]
+  function paint(from){
+    var html = from > 0 ? '<span class="more">… </span>' : "";
+    var f = [], it = [];
+    for (var i=from;i<tokens.length;i++) (tokens[i].interim ? it : f).push(esc(tokens[i].w));
+    if (f.length) html += f.join(" ");
+    if (it.length) html += (f.length ? " " : "") + '<span class="interim">' + it.join(" ") + "</span>";
+    textEl.innerHTML = html;
+  }
+
+  function render(){
+    var finalText = cap(join(committed, sessionFinal));
+    var interim = clean(sessionInterim);
+    if (!finalText) interim = cap(interim);
+    var b = bounds();
+    textEl.classList.remove("breakall");
+
+    if (!finalText && !interim){
+      textEl.classList.add("placeholder");
+      textEl.textContent = hasStarted ? (langSel.value.indexOf("nl") === 0 ? "Ik luister…" : "Listening…") : "Tap the button below and talk";
+      textEl.style.fontSize = (bestSize(b) || b.min) + "px";
+      return;
+    }
+    textEl.classList.remove("placeholder");
+    tokens = [];
+    finalText.split(" ").forEach(function(w){ if (w) tokens.push({w:w, interim:false}); });
+    interim.split(" ").forEach(function(w){ if (w) tokens.push({w:w, interim:true}); });
+
+    paint(0);
+    var s = bestSize(b);
+    if (s){ textEl.style.fontSize = s + "px"; return; }
+
+    // Too much text: drop the oldest words so the newest always shows.
+    var lo = 1, hi = tokens.length - 1, ok = tokens.length - 1;
+    while (lo <= hi){
+      var mid = (lo + hi) >> 1;
+      paint(mid);
+      if (fitsAt(b.min, b)){ ok = mid; hi = mid - 1; } else lo = mid + 1;
+    }
+    paint(ok);
+    s = bestSize(b);
+    if (!s){ textEl.classList.add("breakall"); s = b.min; }
+    textEl.style.fontSize = s + "px";
+  }
+
+  if (window.ResizeObserver) new ResizeObserver(function(){ render(); }).observe(stage);
+  else window.addEventListener("resize", render);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+
+  // ---------- wake lock ----------
+  function keepAwake(){
+    if (!("wakeLock" in navigator) || wakeLock) return;
+    navigator.wakeLock.request("screen").then(function(l){
+      wakeLock = l; l.addEventListener("release", function(){ wakeLock = null; });
+    }).catch(function(){});
+  }
+
+  // ---------- speech ----------
+  function startRec(){
+    clearTimeout(restartTimer);
+    if (!SR || !wantListening) return;
+    var myGen = ++generation;
+    var r = new SR();
+    r.lang = langSel.value;
+    r.interimResults = true;
+    r.continuous = !isAndroid;   // Android repeats words in continuous mode, so restart per phrase there
+    r.maxAlternatives = 1;
+    sessionFinal = ""; sessionInterim = "";
+    var startedAt = Date.now();
+
+    r.onstart = function(){ if (myGen === generation) setStatus("Listening", "on"); };
+    r.onresult = function(e){
+      if (myGen !== generation) return;
+      var fin = [], int = [];
+      for (var i=0;i<e.results.length;i++){
+        var t = e.results[i][0].transcript;
+        (e.results[i].isFinal ? fin : int).push(t);
+      }
+      sessionFinal = fin.join(" ");
+      sessionInterim = int.join(" ");
+      render();
+    };
+    r.onerror = function(e){
+      if (myGen !== generation) return;
+      var err = e.error;
+      if (err === "not-allowed" || err === "service-not-allowed"){
+        wantListening = false; updatePause();
+        setStatus("Microphone is blocked. Allow the microphone for this page in the browser settings.", "bad");
+      } else if (err === "audio-capture"){
+        wantListening = false; updatePause();
+        setStatus("No microphone found.", "bad");
+      } else if (err === "network"){
+        setStatus("No network connection. Trying again…", "bad");
+      } else if (err === "language-not-supported"){
+        wantListening = false; updatePause();
+        setStatus("This language is not available. Select a different language.", "bad");
+      }
+    };
+    r.onend = function(){
+      if (myGen !== generation) return;
+      committed = join(committed, join(sessionFinal, sessionInterim));
+      sessionFinal = ""; sessionInterim = "";
+      rec = null;
+      render();
+      if (wantListening){
+        var quick = Date.now() - startedAt < 1000;
+        restartTimer = setTimeout(startRec, quick ? 600 : 120);
+      } else if (!/bad/.test(statusText.className)) {
+        setStatus("Paused");
+      }
+    };
+    rec = r;
+    try { r.start(); }
+    catch(err){ rec = null; restartTimer = setTimeout(startRec, 400); }
+  }
+
+  function killRec(){
+    clearTimeout(restartTimer);
+    generation++;                  // ignore any late events from the old session
+    if (rec){ try { rec.abort(); } catch(e){} rec = null; }
+  }
+  function restartNow(){
+    killRec();
+    restartTimer = setTimeout(startRec, 250);
+  }
+
+  function updatePause(){
+    document.body.classList.toggle("immersive", hasStarted && wantListening);
+    pauseBtn.disabled = !hasStarted;
+    pauseBtn.style.opacity = hasStarted ? "1" : ".45";
+    if (wantListening){
+      pauseLabel.textContent = "Pause"; pauseBtn.setAttribute("aria-label","Pause");
+      pauseIcon.innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+    } else {
+      pauseLabel.textContent = "Resume"; pauseBtn.setAttribute("aria-label","Resume");
+      pauseIcon.innerHTML = '<path d="M7 4.5v15a1 1 0 0 0 1.5.87l12-7.5a1 1 0 0 0 0-1.74l-12-7.5A1 1 0 0 0 7 4.5z"/>';
+    }
+  }
+
+  clearBtn.addEventListener("click", function(){
+    if (!SR){ return; }
+    var el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen){
+      try { var p = el.requestFullscreen({navigationUI:"hide"}); if (p && p.catch) p.catch(function(){}); } catch(e){}
+    }
+    hasStarted = true;
+    clearLabel.textContent = "Clear & talk";
+    committed = ""; sessionFinal = ""; sessionInterim = "";
+    wantListening = true;
+    updatePause();
+    render();
+    keepAwake();
+    setStatus("Starting…", "on");
+    if (rec){ killRec(); restartTimer = setTimeout(startRec, 250); }
+    else { killRec(); startRec(); }
+  });
+
+  pauseBtn.addEventListener("click", function(){
+    if (!hasStarted) return;
+    if (wantListening){
+      pause(); return;
+    } else {
+      wantListening = true;
+      keepAwake();
+      killRec(); startRec();
+    }
+    updatePause();
+  });
+
+  function pause(){
+    wantListening = false;
+    clearTimeout(restartTimer);
+    if (rec){ try { rec.stop(); } catch(e){} } else setStatus("Paused");
+    updatePause();
+  }
+  // Capture phase: runs before the button handlers, so the Start tap itself does not pause.
+  document.addEventListener("click", function(e){
+    if (!document.body.classList.contains("immersive")) return;
+    e.preventDefault(); e.stopPropagation();
+    pause();
+  }, true);
+
+  document.addEventListener("visibilitychange", function(){
+    if (document.visibilityState === "visible" && wantListening){
+      keepAwake();
+      if (!rec) startRec();
+    }
+  });
+
+  // ---------- start state ----------
+  updatePause();
+  if (!SR){
+    clearBtn.disabled = true; clearBtn.style.opacity = ".45";
+    setStatus("This browser has no speech recognition. Use Chrome on Android or Safari on iPhone.", "bad");
+  } else if (!window.isSecureContext){
+    setStatus("Open this page from an https:// address, or the microphone can stay off.", "bad");
+  }
+  render();
+})();
+</script>
+</body>
+</html>
